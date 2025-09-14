@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Solicitação de Crédito • Leardi São José Imóveis</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.4/dist/tailwind.min.css" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,167 +13,411 @@
     <div id="root"></div>
 
     <script type="text/babel">
-      const GS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwlxoAeAnaQm4ijge0HruzpuWNz39hZ4jdWtHm-uLOv4Wgtem3XJ_NhhHT_FFtyXOJ2/exec";
-      const SETTINGS = { SUBMIT_TIMEOUT_MS: 12000, HEALTHCHECK_ON_LOAD: true };
+      // ===== Config =====
+      const GS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwlxoAeAnaQm4ijge0HruzpuWNz39hZ4jdWtHm-uLOv4Wgtem3XJ_NhhHT_FFtyXOJ2/exec"; // /exec
+      const SETTINGS = { SUBMIT_TIMEOUT_MS: 20000, PING_TIMEOUT_MS: 25000, HEALTHCHECK_ON_LOAD: false };
       const BRAND = {
         name: "Leardi São José Imóveis",
-        logo: "assets/logo.png",
+        email: "unidade.288@leardi.com.br",
+        whatsapp: "(48) 99149-7879",
+        whatsappLink: "https://wa.me/5548991497879",
+        logo: "assets/logo.jpg",
+        colors: { primary: "#0A66C2", dark: "#0B2E59" },
       };
 
-      function timeoutFetch(url, options = { timeout: SETTINGS.SUBMIT_TIMEOUT_MS }) {
+      // ===== Helpers =====
+      function timeoutFetch(url, options = {}) {
+        const { timeout = SETTINGS.SUBMIT_TIMEOUT_MS } = options;
         const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), options.timeout);
+        const id = setTimeout(() => controller.abort(), timeout);
         const final = { ...options, signal: controller.signal };
         return fetch(url, final).finally(() => clearTimeout(id));
       }
 
-      async function sendToSheets(json) {
+      async function sendToSheets(json, timeoutMs = SETTINGS.SUBMIT_TIMEOUT_MS) {
         try {
           const res = await timeoutFetch(GS_WEB_APP_URL, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify(json),
             referrerPolicy: "no-referrer",
-            timeout: SETTINGS.SUBMIT_TIMEOUT_MS,
+            timeout: timeoutMs,
           });
           if (res.ok || res.type === "opaque") return { ok: true, via: res.type === "opaque" ? "opaque" : "ok" };
-        } catch(e1) { }
+        } catch (e1) {}
         try {
-          await timeoutFetch(GS_WEB_APP_URL, {
+          await fetch(GS_WEB_APP_URL, {
             method: "POST",
             mode: "no-cors",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify(json),
             referrerPolicy: "no-referrer",
-            timeout: SETTINGS.SUBMIT_TIMEOUT_MS,
           });
           return { ok: true, via: "no-cors" };
-        } catch(e2) {
+        } catch (e2) {
           try {
             if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
               const blob = new Blob([JSON.stringify(json)], { type: 'text/plain;charset=utf-8' });
               const sent = navigator.sendBeacon(GS_WEB_APP_URL, blob);
               if (sent) return { ok: true, via: 'beacon' };
             }
-          } catch(_){} 
+          } catch(_){}
           return { ok: false, error: e2?.message || String(e2) };
         }
       }
 
-      function App() {
+      function imgPing(url, timeout = 8000) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          let done = false;
+          const finish = (ok) => { if (done) return; done = true; clearTimeout(t); img.onload = img.onerror = null; ok ? resolve(true) : reject(new Error("timeout")); };
+          const t = setTimeout(() => finish(false), timeout);
+          img.onload = () => finish(true);
+          img.onerror = () => finish(true); // mesmo com CORS, prova reachability
+          img.src = url + (url.includes("?") ? "&" : "?") + "imgping=" + Date.now();
+        });
+      }
+
+      async function pingNoTimeout(url) {
+        try {
+          await fetch(url, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ _probe: true, t: Date.now(), _meta: { from: 'ui-ping-nodelay' } }),
+            referrerPolicy: 'no-referrer',
+          });
+          return true;
+        } catch { return false; }
+      }
+
+      async function testConnectivity(setHealth) {
+        setHealth("Testando conexão com /exec ...");
+        if (await pingNoTimeout(GS_WEB_APP_URL)) { setHealth("✅ Conectado (POST no-cors)"); return; }
+        try { await imgPing(GS_WEB_APP_URL, 8000); setHealth("✅ Conectado (imagem GET)"); return; } catch {}
+        setHealth("❌ Falhou: não foi possível alcançar a URL /exec a tempo. Abra a URL em aba anônima; se pedir login, reimplante como 'Qualquer pessoa com o link'.");
+      }
+
+      // Masks
+      function maskCurrency(e){ const v=e.target.value||""; const d=v.replace(/\\D/g,""); const num=Number(d||0); e.target.value=(num/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); }
+      function maskCPF(e){ let v=(e.target.value||"").replace(/\\D/g,"").slice(0,11); v=v.replace(/(\\d{3})(\\d)/,"$1.$2").replace(/(\\d{3})(\\d)/,"$1.$2").replace(/(\\d{3})(\\d{1,2})$/,"$1-$2"); e.target.value=v; }
+      function maskPIS(e){ let v=(e.target.value||"").replace(/\\D/g,"").slice(0,11); v=v.replace(/(\\d{3})(\\d)/,"$1.$2").replace(/(\\d{5})(\\d)/,"$1.$2").replace(/(\\d{5}\\.\\d{2})(\\d{1})$/,"$1-$2"); e.target.value=v; }
+      function maskPhone(e){ let v=(e.target.value||"").replace(/\\D/g,"").slice(0,11); if(v.length<=10) v=v.replace(/(\\d{2})(\\d)/,"($1) $2").replace(/(\\d{4})(\\d{4})$/,"$1-$2"); else v=v.replace(/(\\d{2})(\\d)/,"($1) $2").replace(/(\\d{5})(\\d{4})$/,"$1-$2"); e.target.value=v; }
+
+      // ===== App =====
+      function App(){
+        const [docs, setDocs] = React.useState({});
+        const [files, setFiles] = React.useState([]);
+        const [consentLGPD, setConsentLGPD] = React.useState(false);
+        const [consentSCR, setConsentSCR] = React.useState(false);
+        const [loading, setLoading] = React.useState(false);
         const [msg, setMsg] = React.useState("");
         const [health, setHealth] = React.useState("");
-        const [loading, setLoading] = React.useState(false);
 
-<script type="text/babel">
-  /* COLE estas funções de ping acima de testConnectivity() */
-  function imgPing(url, timeout = 8000) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      let done = false;
-      const finish = (ok) => { if (done) return; done = true; clearTimeout(t); img.onload = img.onerror = null; ok ? resolve(true) : reject(new Error("timeout")); };
-      const t = setTimeout(() => finish(false), timeout);
-      img.onload = () => finish(true);
-      img.onerror = () => finish(true); // mesmo com CORS, prova reachability
-      img.src = url + (url.includes("?") ? "&" : "?") + "imgping=" + Date.now();
-    });
-  }
+        const urlLooksOk = /\\/exec(\\?.*)?$/.test(GS_WEB_APP_URL);
 
-  async function pingViaBeacon(url) {
-    try {
-      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-        const blob = new Blob([JSON.stringify({ _probe: true, t: Date.now(), _meta: { from: 'ui-ping-beacon' } })], { type: 'text/plain;charset=utf-8' });
-        const sent = navigator.sendBeacon(url, blob);
-        if (sent) return true;
-      }
-    } catch {} 
-    return false;
-  }
+        function onFileChange(e){ setFiles(Array.from(e.target.files||[])); }
+        function toggleDoc(key,val){ setDocs(prev=>({ ...prev, [key]: val })); }
 
-  async function pingNoTimeout(url) {
-    try {
-      await fetch(url, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ _probe: true, t: Date.now(), _meta: { from: 'ui-ping-nodelay' } }),
-        referrerPolicy: 'no-referrer',
-        // sem AbortController de propósito (evita AbortError)
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
+        function formToJSON(form){
+          const data = new FormData(form);
+          const json = {};
+          for (let [k,v] of data.entries()){
+            if (json[k]) json[k] = Array.isArray(json[k]) ? [...json[k], v] : [json[k], v];
+            else json[k] = v;
+          }
+          json.documentacao = docs;
+          json.arquivos = files.map(f=>({ name: f.name, size: f.size, type: f.type }));
+          json._meta = { sent_at: new Date().toISOString(), ua: navigator.userAgent, source: "gh-pages-full", version: "2025-09-14" };
+          return json;
+        }
 
-  /* SUBSTITUA sua testConnectivity() por esta */
-  async function testConnectivity() {
-    setHealth("Testando conexão com /exec ...");
-
-    if (await pingViaBeacon(GS_WEB_APP_URL)) { setHealth("✅ Conectado (beacon)"); return; }
-    if (await pingNoTimeout(GS_WEB_APP_URL)) { setHealth("✅ Conectado (POST no-cors)"); return; }
-
-    try {
-      await imgPing(GS_WEB_APP_URL, 8000);
-      setHealth("✅ Conectado (imagem GET)");
-      return;
-    } catch {}
-
-    setHealth("❌ Falhou: não foi possível alcançar a URL /exec a tempo. Abra a URL em aba anônima; se pedir login, reimplante como 'Qualquer pessoa com o link'.");
-  }
-</script>
-
-
-        async function handleSubmit(e) {
+        async function handleSubmit(e){
           e.preventDefault();
           setMsg("");
-          const json = { nome_1: e.target.nome_1?.value || "", cpf_1: e.target.cpf_1?.value || "", _meta: { sent_at: new Date().toISOString(), source: 'gh-pages-starter' } };
+
+          if (!consentLGPD || !consentSCR){ setMsg("⚠️ É necessário aceitar LGPD e SCR/BACEN para enviar."); return; }
+          if (!/\\/exec(\\?.*)?$/.test(GS_WEB_APP_URL)){ setMsg("⚠️ A URL do Apps Script precisa terminar com /exec."); return; }
+
+          const json = formToJSON(e.currentTarget);
           setLoading(true);
           const result = await sendToSheets(json);
-          if (result.ok) setMsg("✅ Enviado (" + result.via + ")"); else setMsg("❌ Falhou: " + (result.error || 'Erro desconhecido'));
+          if (result.ok){
+            setMsg(result.via === "no-cors" || result.via === "opaque" ? "✅ Enviado (resposta suprimida por CORS/opaque)." : "✅ Enviado com sucesso!");
+            e.currentTarget.reset(); setDocs({}); setFiles([]);
+          } else {
+            setMsg("❌ Não foi possível enviar ao Google Sheets: " + (result.error || "Erro desconhecido"));
+          }
           setLoading(false);
         }
 
-        React.useEffect(() => testConnectivity(), []);
-
         return (
-          <main className="max-w-2xl mx-auto p-6">
-            <header className="flex items-center gap-3 mb-6">
-              <img src={BRAND.logo} alt={BRAND.name} className="h-10 w-auto" />
-              <div>
-                <h1 className="text-xl font-semibold">Solicitação de Crédito Imobiliário</h1>
-                <p className="text-sm text-slate-500">Preencha os dados para dar seguimento.</p>
+          <div className="min-h-screen bg-slate-50">
+            <header className="bg-white border-b sticky top-0 z-50">
+              <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-4">
+                <img src={BRAND.logo} alt={BRAND.name} className="h-10 w-auto" onError={(e)=> e.currentTarget.style.display='none'} />
+                <div className="flex-1">
+                  <h1 className="text-xl font-semibold text-slate-800">Solicitação de Crédito Imobiliário</h1>
+                  <p className="text-sm text-slate-500">Preencha os dados para dar seguimento à sua solicitação de crédito.</p>
+                </div>
+                <a href="#form" className="text-sm underline">Ir ao formulário</a>
               </div>
             </header>
 
-            <section className="mb-4 p-4 rounded-xl border bg-slate-50 text-sm">
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={testConnectivity} className="px-3 py-2 rounded bg-emerald-600 text-white">Testar conexão</button>
-              </div>
-              {health && <p className="mt-2 text-slate-700">{health}</p>}
-            </section>
+            <main className="max-w-5xl mx-auto px-4 py-8" id="form">
+              <div className="bg-white rounded-2xl shadow-sm p-6 border">
+                <div className="mb-6">
+                  <p className="text-sm text-slate-600">Correspondente:</p>
+                  <p className="text-lg font-semibold text-slate-900">{BRAND.name}</p>
+                </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Nome completo*</label>
-                <input name="nome_1" placeholder="João da Silva" className="w-full rounded-xl border px-3 py-2" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">CPF*</label>
-                <input name="cpf_1" placeholder="000.000.000-00" className="w-full rounded-xl border px-3 py-2" required />
-              </div>
-              <button type="submit" disabled={loading} className="rounded-2xl px-5 py-3 bg-sky-600 text-white font-medium disabled:opacity-60">{loading?"Enviando...":"Enviar solicitação"}</button>
-              {msg && <p className="text-sm text-slate-700">{msg}</p>}
-            </form>
+                <section className="mb-6 p-4 rounded-xl border bg-slate-50 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">Diagnóstico:</span>
+                    <code className="px-2 py-1 rounded bg-white border">/exec válido: {String(urlLooksOk)}</code>
+                    <code className="px-2 py-1 rounded bg-white border">online: {String(navigator.onLine)}</code>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => testConnectivity(setHealth)} className="px-3 py-2 rounded bg-emerald-600 text-white">Testar conexão</button>
+                    <button type="button" onClick={async () => { setHealth("Enviando payload de teste..."); const r = await sendToSheets({ exemplo: true, ping: Date.now(), _meta: { from: "ui-test" } }); setHealth(r.ok ? `✅ Enviado (via ${r.via})` : `❌ Falhou: ${r.error || "Erro"}`); }} className="px-3 py-2 rounded bg-indigo-600 text-white">Testar envio (POST)</button>
+                  </div>
+                  {health && <p className="mt-2 text-slate-700">{health}</p>}
+                </section>
 
-            <footer className="text-sm text-slate-500 mt-10 pb-8">
-              <p>© {new Date().getFullYear()} Leardi São José Imóveis</p>
-            </footer>
-          </main>
+                <form onSubmit={handleSubmit} className="space-y-10">
+                  <section className="space-y-6">
+                    <h2 className="text-lg font-semibold text-slate-900">1) Dados do imóvel</h2>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium">Possui imóvel definido?</label>
+                        <div className="flex gap-4">
+                          <label className="inline-flex items-center gap-2"><input type="radio" name="possui_imovel" value="Nao" className="accent-sky-600" required /> <span>Não</span></label>
+                          <label className="inline-flex items-center gap-2"><input type="radio" name="possui_imovel" value="Sim" className="accent-sky-600" /> <span>Sim</span></label>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium">Valor de compra do imóvel</label>
+                        <input name="valor_compra" onInput={maskCurrency} placeholder="R$ 0,00" className="w-full rounded-xl border px-3 py-2" required />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium">Opção de compra é um imóvel:</label>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {["Usado", "Novo", "Na planta (Crédito associativo)", "Terreno/Construção", "Outros"].map(opt => (
+                          <label key={opt} className="flex items-center gap-2 rounded-xl border px-3 py-2 cursor-pointer">
+                            <input type="radio" name="tipo_imovel" value={opt} className="accent-sky-600" required />
+                            <span>{opt}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium">Tem interesse em financiar as custas/despesas do processo?</label>
+                      <div className="flex gap-4">
+                        <label className="inline-flex items-center gap-2"><input type="radio" name="financiar_custas" value="Nao" className="accent-sky-600" required />Não</label>
+                        <label className="inline-flex items-center gap-2"><input type="radio" name="financiar_custas" value="Sim" className="accent-sky-600" />Sim</label>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Observações</label>
+                      <textarea name="observacoes" className="w-full rounded-xl border px-3 py-2 min-h-[96px]" placeholder="Ex.: tenho urgência, imóvel fica no bairro X, etc."></textarea>
+                    </div>
+                  </section>
+
+                  <section className="space-y-6">
+                    <h2 className="text-lg font-semibold text-slate-900">2) Comprador 1</h2>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Tipo*</label>
+                        <div className="flex gap-4">
+                          <label className="inline-flex items-center gap-2"><input type="radio" name="tipo_pessoa_1" value="CPF" className="accent-sky-600" required />CPF</label>
+                          <label className="inline-flex items-center gap-2"><input type="radio" name="tipo_pessoa_1" value="CNPJ" className="accent-sky-600" />CNPJ</label>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">CPF*</label>
+                        <input name="cpf_1" onInput={maskCPF} placeholder="000.000.000-00" className="w-full rounded-xl border px-3 py-2" required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">PIS/NIS</label>
+                        <input name="pis_1" onInput={maskPIS} placeholder="000.00000.00-0" className="w-full rounded-xl border px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Nome completo*</label>
+                        <input name="nome_1" placeholder="João da Silva" className="w-full rounded-xl border px-3 py-2" required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Data de nascimento</label>
+                        <input type="date" name="nascimento_1" className="w-full rounded-xl border px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Tipo de profissão</label>
+                        <select name="tipo_profissao_1" className="w-full rounded-xl border px-3 py-2">
+                          <option value="">Selecione</option>
+                          <option>CLT</option>
+                          <option>Autônomo</option>
+                          <option>Servidor Público</option>
+                          <option>Empresário</option>
+                          <option>Aposentado/Pensionista</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Profissão</label>
+                        <input name="profissao_1" placeholder="Selecione" className="w-full rounded-xl border px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Escolaridade</label>
+                        <select name="escolaridade_1" className="w-full rounded-xl border px-3 py-2">
+                          <option value="">Selecione</option>
+                          <option>Ensino Fundamental</option>
+                          <option>Ensino Médio</option>
+                          <option>Ensino Superior</option>
+                          <option>Pós-graduação</option>
+                          <option>Mestrado/Doutorado</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Estado civil</label>
+                        <select name="estado_civil_1" className="w-full rounded-xl border px-3 py-2">
+                          <option value="">Selecione</option>
+                          <option>Solteiro(a)</option>
+                          <option>Casado(a)</option>
+                          <option>União estável</option>
+                          <option>Separado(a)/Divorciado(a)</option>
+                          <option>Viúvo(a)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Email</label>
+                        <input type="email" name="email_1" placeholder="nome@exemplo.com" className="w-full rounded-xl border px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Telefone</label>
+                        <input name="telefone_1" onInput={maskPhone} placeholder="(99) 99999-9999" className="w-full rounded-xl border px-3 py-2" />
+                      </div>
+                    </div>
+
+                    <div className="col-span-full grid gap-3 md:grid-cols-3">
+                      <div>
+                        <span className="block text-sm font-medium">Já possui imóvel próprio (casa/apartamento)?</span>
+                        <div className="flex gap-4">
+                          <label className="inline-flex items-center gap-2"><input type="radio" name="imovel_proprio_1" value="Nao" className="accent-sky-600" />Não</label>
+                          <label className="inline-flex items-center gap-2"><input type="radio" name="imovel_proprio_1" value="Sim" className="accent-sky-600" />Sim</label>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Renda bruta</label>
+                        <input name="renda_bruta_1" onInput={maskCurrency} placeholder="R$ 0,00" className="w-full rounded-xl border px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Renda líquida</label>
+                        <input name="renda_liquida_1" onInput={maskCurrency} placeholder="R$ 0,00" className="w-full rounded-xl border px-3 py-2" />
+                      </div>
+                    </div>
+
+                    <div className="col-span-full grid gap-3 md:grid-cols-3">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Mês ref. folha</label>
+                        <input type="month" name="mes_ref_folha_1" className="w-full rounded-xl border px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Imposto retido na fonte</label>
+                        <input name="irrf_1" onInput={maskCurrency} placeholder="R$ 0,00" className="w-full rounded-xl border px-3 py-2" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Mês/ano ref. comprovante de residência</label>
+                        <input type="month" name="mes_ano_resid_1" className="w-full rounded-xl border px-3 py-2" />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="space-y-6">
+                    <h2 className="text-lg font-semibold text-slate-900">3) Documentação</h2>
+                    <p className="text-sm text-slate-600">Envie seus documentos (ou do casal) para análise.</p>
+
+                    <div className="grid gap-4">
+                      {[
+                        { key: "doc_identidade", label: "Carteira de identidade, CPF ou CNH" },
+                        { key: "doc_estado_civil", label: "Prova de estado civil - certidão de nascimento/casamento, etc." },
+                        { key: "doc_rendimentos", label: "Comprovante de rendimentos (holerites/extrato)" },
+                        { key: "doc_residencia", label: "Último comprovante de residência" },
+                        { key: "doc_ir", label: "Declaração de imposto de renda (se declarou)" },
+                        { key: "doc_ctps", label: "Carteira de trabalho - versão digital em PDF completo" },
+                        { key: "doc_pacto_registro", label: "Registro do pacto (caso haja pacto antenupcial)" },
+                        { key: "doc_pacto_escritura", label: "Escritura do pacto (caso haja pacto antenupcial)" },
+                        { key: "doc_endereco_1ano", label: "Comprovante de endereço de 1 ano atrás" },
+                        { key: "doc_matricula_ir", label: "Matrícula do imóvel declarado no IR (todas as folhas)" },
+                      ].map(({key,label}) => (
+                        <div key={key} className="grid md:grid-cols-3 gap-3 items-start">
+                          <span className="text-sm font-medium">{label}</span>
+                          <div className="flex items-center gap-4">
+                            <label className="inline-flex items-center gap-2"><input type="radio" name={key} value="Nao" className="accent-sky-600" onChange={() => toggleDoc(key, "Não")} />Não</label>
+                            <label className="inline-flex items-center gap-2"><input type="radio" name={key} value="Sim" className="accent-sky-600" onChange={() => toggleDoc(key, "Sim")} />Sim</label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-2">
+                      <label className="block text-sm font-medium mb-1">Anexos</label>
+                      <input type="file" name="anexos" multiple onChange={onFileChange} className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100" />
+                      <p className="text-xs text-slate-500 mt-1">Você pode arrastar e soltar arquivos aqui.</p>
+                    </div>
+                  </section>
+
+                  <section className="space-y-4">
+                    <h2 className="text-lg font-semibold text-slate-900">4) Autorizações e Termos</h2>
+
+                    <details className="rounded-xl border p-4 bg-slate-50">
+                      <summary className="cursor-pointer font-medium">Termos de autorização (SCR/BACEN) — clique para ler</summary>
+                      <div className="mt-3 space-y-3 text-sm text-slate-700">
+                        <p>Autorizo a instituição financeira, nos termos das Resoluções BACEN nº 3.920/10 e 5.037/22: a consultar as informações do SCR/BACEN e a fornecer/arquivar dados cadastrais e de crédito, respeitadas as disposições legais.</p>
+                      </div>
+                    </details>
+
+                    <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 accent-sky-600" onChange={(e)=>window.__setConsentSCR?.(e.target.checked)} /> <span>Declaro que li e autorizo a consulta e tratamento de dados conforme os termos acima (SCR/BACEN).</span></label>
+
+                    <details className="rounded-xl border p-4 bg-slate-50">
+                      <summary className="cursor-pointer font-medium">LGPD — clique para ler</summary>
+                      <div className="mt-3 space-y-3 text-sm text-slate-700">
+                        <p>Ao enviar, concordo em compartilhar os dados deste formulário com a plataforma Rauzee e com os usuários envolvidos no processo, conforme a LGPD.</p>
+                      </div>
+                    </details>
+
+                    <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 accent-sky-600" onChange={(e)=>window.__setConsentLGPD?.(e.target.checked)} /> <span>Concordo com o tratamento dos dados pessoais conforme a LGPD e a Política de Privacidade da {BRAND.name}.</span></label>
+                  </section>
+
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-2">
+                    <button type="submit" disabled={loading} className="rounded-2xl px-5 py-3 bg-sky-600 text-white font-medium disabled:opacity-60">{loading?"Enviando...":"Enviar solicitação"}</button>
+                    {msg && <span className="text-sm text-slate-700">{msg}</span>}
+                  </div>
+                </form>
+              </div>
+
+              <footer className="text-sm text-slate-500 mt-10 pb-8">
+                <p>© {new Date().getFullYear()} {BRAND.name} — CRECI SC • Todos os direitos reservados.</p>
+                <p className="mt-1">Dúvidas? Fale conosco: <a href={"mailto:"+BRAND.email} className="underline">{BRAND.email}</a> | WhatsApp: <a href={BRAND.whatsappLink} target="_blank" className="underline" rel="noreferrer noopener">{BRAND.whatsapp}</a></p>
+              </footer>
+            </main>
+          </div>
         );
       }
 
-      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+      // tiny helpers exposed so checkbox can reach state in a simple way without extra plumbing
+      (function exposeSetters(){
+        let setLGPD, setSCR;
+        function Root(){
+          const [consentLGPD, _setLGPD] = React.useState(false);
+          const [consentSCR, _setSCR] = React.useState(false);
+          React.useEffect(()=>{ window.__setConsentLGPD = _setLGPD; window.__setConsentSCR = _setSCR; },[]);
+          // Just render the main App; the consent checkboxes in the DOM call the setters above
+          return <App />;
+        }
+        ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+      })();
     </script>
   </body>
 </html>
