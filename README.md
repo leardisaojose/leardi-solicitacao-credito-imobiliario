@@ -2,7 +2,7 @@
 
 Landing pública que envia dados para Google Sheets via Apps Script (/exec).
 
-**URL pública (projeto):** https://leardisaojose.github.io/leardi-solicitacao-credito/
+**URL pública (projeto):** https://leardisaojose.github.io/leardi-solicitacao-credito-imobiliario/
 
 ## Publicar (GitHub Pages)
 1. Envie `index.html` e a pasta `assets/` para a branch `main`.

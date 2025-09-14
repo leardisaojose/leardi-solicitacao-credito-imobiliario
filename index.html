@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Solicitação de Crédito • Leardi São José Imóveis</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.4/dist/tailwind.min.css" rel="stylesheet" />
-    <!-- React via CDN (ok para páginas estáticas simples) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -15,19 +14,10 @@
 
     <script type="text/babel">
       const GS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwlxoAeAnaQm4ijge0HruzpuWNz39hZ4jdWtHm-uLOv4Wgtem3XJ_NhhHT_FFtyXOJ2/exec";
-      const SETTINGS = { SUBMIT_TIMEOUT_MS: 12000, HEALTHCHECK_ON_LOAD: true, DOWNLOAD_JSON_ON_FAIL: false };
+      const SETTINGS = { SUBMIT_TIMEOUT_MS: 12000, HEALTHCHECK_ON_LOAD: true };
       const BRAND = {
         name: "Leardi São José Imóveis",
-        email: "unidade.288@leardi.com.br",
-        whatsapp: "(48) 99149-7879",
-        whatsappLink: "https://wa.me/5548991497879",
         logo: "assets/logo.png",
-        address: "",
-        site: "",
-        siteLink: "",
-        instagram: "",
-        instagramLink: "",
-        colors: { primary: "#0A66C2", dark: "#0B2E59" }
       };
 
       function timeoutFetch(url, options = { timeout: SETTINGS.SUBMIT_TIMEOUT_MS }) {
@@ -74,10 +64,6 @@
         const [msg, setMsg] = React.useState("");
         const [health, setHealth] = React.useState("");
         const [loading, setLoading] = React.useState(false);
-        const [simulateFail, setSimulateFail] = React.useState(false);
-        const [testMode, setTestMode] = React.useState(false);
-
-        const urlLooksOk = /\/exec(\?.*)?$/.test(GS_WEB_APP_URL);
 
         async function testConnectivity() {
           setHealth("Testando conexão com /exec ...");
@@ -94,31 +80,17 @@
           } catch (e) { setHealth("❌ Falhou: " + (e?.message || String(e))); }
         }
 
-        function copyCurl() {
-          const payload = { exemplo: true, nome_1: "Teste Curl", cpf_1: "000.000.000-00", _meta: { from: 'curl' } };
-          const curl = `curl -X POST -H "Content-Type: text/plain" -d '${JSON.stringify(payload).replace(/'/g, "'\\''")}' "${GS_WEB_APP_URL}"`;
-          navigator.clipboard?.writeText(curl).then(() => setHealth("Comando curl copiado."));
-        }
-
-        function openHelpTab() {
-          const html = `<!doctype html><meta charset='utf-8'><title>${BRAND.name} • Guia</title><p>URL atual do Apps Script:</p><code>${GS_WEB_APP_URL}</code><ol><li>Deploy → Web app → Execute as: Você</li><li>Quem tem acesso: Qualquer pessoa com o link</li><li>Teste a URL /exec em aba anônima (deve mostrar OK)</li></ol>`;
-          const w = window.open('about:blank','_blank','noopener,noreferrer');
-          if (w) { w.document.open(); w.document.write(html); w.document.close(); }
-        }
-
         async function handleSubmit(e) {
           e.preventDefault();
           setMsg("");
-          if (!/\/exec(\?.*)?$/.test(GS_WEB_APP_URL)) { setMsg("⚠️ A URL do Apps Script precisa terminar com /exec."); return; }
-          const json = { nome_1: e.target.nome_1?.value || "", cpf_1: e.target.cpf_1?.value || "", _meta: { sent_at: new Date().toISOString(), source: 'gh-pages-index' } };
-          if (testMode) { setMsg("ℹ️ Modo teste."); return; }
+          const json = { nome_1: e.target.nome_1?.value || "", cpf_1: e.target.cpf_1?.value || "", _meta: { sent_at: new Date().toISOString(), source: 'gh-pages-starter' } };
           setLoading(true);
-          const result = simulateFail ? { ok: false, error: 'Simulação' } : await sendToSheets(json);
-          if (result.ok) setMsg("✅ Enviado (" + result.via + ")"); else { setMsg("❌ Falhou: " + (result.error || 'Erro desconhecido')); openHelpTab(); }
+          const result = await sendToSheets(json);
+          if (result.ok) setMsg("✅ Enviado (" + result.via + ")"); else setMsg("❌ Falhou: " + (result.error || 'Erro desconhecido'));
           setLoading(false);
         }
 
-        React.useEffect(() => { if (SETTINGS.HEALTHCHECK_ON_LOAD) testConnectivity(); }, []);
+        React.useEffect(() => testConnectivity(), []);
 
         return (
           <main className="max-w-2xl mx-auto p-6">
@@ -131,16 +103,8 @@
             </header>
 
             <section className="mb-4 p-4 rounded-xl border bg-slate-50 text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">Diagnóstico:</span>
-                <code className="px-2 py-1 rounded bg-white border">/exec válido: {String(urlLooksOk)}</code>
-              </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={testConnectivity} className="px-3 py-2 rounded bg-emerald-600 text-white">Testar conexão</button>
-                <button type="button" onClick={copyCurl} className="px-3 py-2 rounded bg-slate-700 text-white">Copiar cURL de teste</button>
-                <button type="button" onClick={openHelpTab} className="px-3 py-2 rounded" style={{background: BRAND.colors.primary, color: '#fff'}}>Abrir instruções</button>
-                <label className="inline-flex items-center gap-2 ml-auto"><input type="checkbox" checked={simulateFail} onChange={(e)=>setSimulateFail(e.target.checked)} className="accent-sky-600" /><span>Simular falha</span></label>
-                <label className="inline-flex items-center gap-2"><input type="checkbox" checked={testMode} onChange={(e)=>setTestMode(e.target.checked)} className="accent-sky-600" /><span>Modo teste</span></label>
               </div>
               {health && <p className="mt-2 text-slate-700">{health}</p>}
             </section>
@@ -159,7 +123,7 @@
             </form>
 
             <footer className="text-sm text-slate-500 mt-10 pb-8">
-              <p>© {new Date().getFullYear()} {BRAND.name}</p>
+              <p>© {new Date().getFullYear()} Leardi São José Imóveis</p>
             </footer>
           </main>
         );
